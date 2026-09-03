@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141312">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Atomic GVD</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Karla:wght@400;500;600;700&display=swap&subset=latin-ext">
+<style>
+/* ============ TOKENS — temă dark unică, aleasă deliberat ============ */
+:root{
+  --bg:#141312;            /* fundal */
+  --surface:#1D1B19;       /* card */
+  --raised:#26231F;        /* card ridicat / input */
+  --line:#33302B;          /* borduri */
+  --ink:#EDE7DD;           /* text principal */
+  --ink2:#A89F92;          /* text secundar */
+  --ink3:#6E675D;          /* text estompat */
+  --accent:#E0A458;        /* chihlimbar — brand */
+  --accent-deep:#8A6428;
+  --good:#3FA351;
+  --danger:#C4543E;
+  --r:16px;
+  --font-d:'Fraunces',Georgia,serif;
+  --font-b:'Karla','Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{color-scheme:dark}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:var(--font-b);font-size:16px;line-height:1.5;
+  min-height:100dvh;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
+}
+#app{max-width:480px;margin:0 auto;padding:0 16px}
+button{font-family:inherit;color:inherit;background:none;border:none;cursor:pointer;font-size:inherit}
+input,select,textarea{font-family:inherit;font-size:16px;color:var(--ink);background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+h1,h2,h3{font-family:var(--font-d);font-weight:600;line-height:1.2;text-wrap:balance}
+.num{font-variant-numeric:tabular-nums}
+
+/* ============ HEADER ============ */
+header{padding:22px 0 6px}
+.brand{display:flex;align-items:baseline;justify-content:space-between}
+.brand .logo{font-family:var(--font-d);font-weight:700;font-size:15px;letter-spacing:.06em;color:var(--accent)}
+.datenav{display:flex;align-items:center;justify-content:space-between;margin-top:10px}
+.datenav h1{font-size:26px}
+.datenav .sub{color:var(--ink2);font-size:13px;margin-top:2px}
+.navbtns{display:flex;gap:6px}
+.navbtns button{width:40px;height:40px;border-radius:12px;background:var(--surface);border:1px solid var(--line);color:var(--ink2);font-size:18px;display:grid;place-items:center}
+.navbtns button:disabled{opacity:.35}
+.todaychip{margin-top:8px;display:none}
+.todaychip button{color:var(--accent);font-size:13px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+
+/* bandă voturi */
+.votebar{margin:14px 0 4px;padding:12px 16px;background:linear-gradient(135deg,#221D15,#1D1B19);border:1px solid #3A311F;border-radius:var(--r);display:flex;justify-content:space-between;align-items:center}
+.votebar .n{font-family:var(--font-d);font-size:24px;font-weight:700;color:var(--accent)}
+.votebar .t{font-size:13px;color:var(--ink2);max-width:230px;line-height:1.35}
+
+/* ============ CARDURI OBICEI (Azi) ============ */
+.hlist{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.hcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;gap:14px;align-items:center;position:relative;overflow:hidden;transition:border-color .25s}
+.hcard.done{border-color:color-mix(in srgb,var(--hc) 45%,var(--line))}
+.hcard.offday{opacity:.5}
+.hcard .stripe{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hc);opacity:.9}
+.checkbtn{flex:none;width:52px;height:52px;position:relative;display:grid;place-items:center}
+.checkbtn svg{position:absolute;inset:0;width:52px;height:52px}
+.checkbtn .ringbg{fill:none;stroke:var(--line);stroke-width:3}
+.checkbtn .ringfg{fill:none;stroke:var(--hc);stroke-width:3;stroke-linecap:round;stroke-dasharray:151;stroke-dashoffset:151;transform:rotate(-90deg);transform-origin:center;transition:stroke-dashoffset .45s cubic-bezier(.22,1,.36,1)}
+.hcard.done .ringfg{stroke-dashoffset:0}
+.checkbtn .tick{width:20px;height:20px;stroke:var(--hc);stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:0;transform:scale(.4);transition:.3s .15s}
+.hcard.done .tick{opacity:1;transform:scale(1)}
+.hbody{flex:1;min-width:0}
+.hname{font-weight:700;font-size:16px}
+.hcue{font-size:12.5px;color:var(--ink3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hmeta{display:flex;gap:8px;margin-top:7px;flex-wrap:wrap}
+.pill{font-size:11.5px;font-weight:600;letter-spacing:.03em;padding:3px 9px;border-radius:99px;background:var(--raised);color:var(--ink2);border:1px solid var(--line)}
+.pill.hot{color:var(--hc);border-color:color-mix(in srgb,var(--hc) 40%,transparent)}
+.pill.warn{color:var(--accent);border-color:var(--accent-deep)}
+.wkdots{display:flex;gap:4px;align-items:center}
+.wkdots i{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.wkdots i.on{background:var(--hc)}
+
+/* somn */
+.sleepctl{display:flex;align-items:center;gap:8px;margin-top:9px}
+.sleepctl .stepper{width:42px;height:38px;border-radius:10px;background:var(--raised);border:1px solid var(--line);font-weight:700;color:var(--ink2);font-size:15px}
+.sleepctl .val{font-family:var(--font-d);font-size:21px;font-weight:600;min-width:78px;text-align:center}
+.sleepctl .val small{font-size:13px;color:var(--ink2);font-family:var(--font-b)}
+.chips{display:flex;gap:6px;margin-top:8px}
+.chips button{font-size:12.5px;padding:5px 12px;border-radius:99px;background:var(--raised);border:1px solid var(--line);color:var(--ink2)}
+
+/* mesaj salvare (never miss twice) */
+.rescue{margin-top:8px;font-size:12.5px;color:var(--accent);background:#221C12;border:1px solid #3A311F;border-radius:10px;padding:8px 10px;line-height:1.4}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--raised);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;padding:11px 16px;font-size:14px;max-width:min(90vw,420px);opacity:0;pointer-events:none;transition:.35s;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* celebrare */
+#cele{position:fixed;inset:0;background:rgba(10,9,8,.8);backdrop-filter:blur(6px);display:none;place-items:center;z-index:70;padding:24px}
+#cele.show{display:grid}
+#cele .box{background:var(--surface);border:1px solid #3A311F;border-radius:22px;padding:34px 26px;text-align:center;max-width:340px;animation:pop .5s cubic-bezier(.22,1.4,.36,1)}
+@keyframes pop{from{transform:scale(.7);opacity:0}}
+#cele .big{font-family:var(--font-d);font-size:52px;font-weight:700;color:var(--accent);line-height:1}
+#cele h2{font-size:21px;margin-top:10px}
+#cele p{color:var(--ink2);font-size:14px;margin-top:8px}
+#cele button{margin-top:20px;background:var(--accent);color:#141312;font-weight:700;padding:11px 26px;border-radius:12px;font-size:15px}
+
+/* ============ RAPOARTE ============ */
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:3px;margin-top:14px}
+.seg button{flex:1;padding:8px 0;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.seg button.on{background:var(--raised);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.periodnav{display:flex;align-items:center;justify-content:space-between;margin:14px 0 4px}
+.periodnav h2{font-size:19px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-top:12px}
+.card h3{font-size:15px;display:flex;align-items:center;gap:8px}
+.card h3 .dot{width:9px;height:9px;border-radius:50%;background:var(--hc);flex:none}
+.card .sub{font-size:12.5px;color:var(--ink3);margin-top:2px}
+.progress{height:8px;background:var(--raised);border-radius:99px;margin-top:10px;overflow:hidden}
+.progress i{display:block;height:100%;border-radius:99px;background:var(--hc);transition:width .5s}
+.statrow{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;font-size:13px;color:var(--ink2)}
+.statrow b{font-family:var(--font-d);font-size:17px;color:var(--ink);font-weight:600}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.kpi .v{font-family:var(--font-d);font-size:26px;font-weight:700}
+.kpi .l{font-size:12px;color:var(--ink2);margin-top:2px;line-height:1.3}
+.heat{display:grid;grid-auto-flow:column;gap:3px;margin-top:12px;justify-content:start;overflow-x:auto;padding-bottom:4px}
+.heat .col{display:grid;grid-template-rows:repeat(7,1fr);gap:3px}
+.heat .cell{width:13px;height:13px;border-radius:3.5px;background:var(--raised)}
+.heat .cell.off{background:transparent;border:1px dashed #2A2825}
+.heat .cell.miss{background:#2E2A25}
+.heat .cell.p1{background:color-mix(in srgb,var(--hc) 35%,var(--raised))}
+.heat .cell.p2{background:color-mix(in srgb,var(--hc) 65%,var(--raised))}
+.heat .cell.p3{background:var(--hc)}
+.heat .cell.today{outline:1.5px solid var(--ink2);outline-offset:1px}
+.heatlbl{display:flex;gap:14px;font-size:11px;color:var(--ink3);margin-top:8px;align-items:center;flex-wrap:wrap}
+.heatlbl .sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+svg.chart{width:100%;height:auto;display:block;margin-top:10px}
+.dow{display:flex;gap:6px;margin-top:12px;align-items:flex-end;height:90px}
+.dow .b{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+.dow .bar{width:100%;max-width:34px;border-radius:4px 4px 0 0;background:color-mix(in srgb,var(--accent) 55%,var(--raised));min-height:2px}
+.dow .lb{font-size:10.5px;color:var(--ink3)}
+.dow .pv{font-size:10.5px;color:var(--ink2)}
+.callout{margin-top:12px;font-size:13px;color:var(--ink2);border-left:3px solid var(--accent);padding:8px 12px;background:var(--raised);border-radius:0 10px 10px 0;line-height:1.45}
+.callout b{color:var(--ink)}
+
+/* ============ OBICEIURI (management) ============ */
+.mcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:10px;display:flex;gap:12px;align-items:center}
+.mcard .cdot{width:14px;height:14px;border-radius:50%;background:var(--hc);flex:none}
+.mcard .mb{flex:1;min-width:0}
+.mcard .mn{font-weight:700}
+.mcard .mi{font-size:12.5px;color:var(--ink3)}
+.mcard .acts{display:flex;gap:4px}
+.mcard .acts button{width:38px;height:38px;border-radius:10px;background:var(--raised);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink2)}
+.addbtn{margin-top:14px;width:100%;padding:14px;border-radius:var(--r);border:1.5px dashed var(--accent-deep);color:var(--accent);font-weight:700;font-size:15px}
+.arch-h{margin-top:20px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+
+/* modal formular */
+#modal{position:fixed;inset:0;background:rgba(10,9,8,.75);backdrop-filter:blur(4px);display:none;z-index:50;overflow-y:auto;padding:20px 0}
+#modal.show{display:block}
+#modal .sheet{background:var(--surface);border:1px solid var(--line);border-radius:22px;max-width:460px;margin:0 auto;padding:22px 18px;width:calc(100% - 24px)}
+#modal h2{font-size:20px;margin-bottom:4px}
+#modal .note{font-size:12.5px;color:var(--ink3);margin-bottom:14px}
+.field{margin-top:13px}
+.field label{display:block;font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);margin-bottom:6px}
+.field .hint{font-size:12px;color:var(--ink3);margin-top:4px;line-height:1.4}
+.row2{display:flex;gap:10px}
+.row2>*{flex:1}
+.togglerow{display:flex;justify-content:space-between;align-items:center;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:13px}
+.togglerow span{font-size:14px}
+.tg{position:relative;width:46px;height:26px;border-radius:99px;background:var(--line);transition:.25s;flex:none}
+.tg.on{background:var(--accent)}
+.tg i{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--ink);transition:.25s}
+.tg.on i{left:23px;background:#141312}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}
+.swatches button{width:34px;height:34px;border-radius:50%;border:2px solid transparent}
+.swatches button.on{border-color:var(--ink);transform:scale(1.1)}
+.freqrow{display:flex;align-items:center;gap:10px}
+.freqrow button{width:40px;height:40px;border-radius:10px;background:var(--raised);border:1px solid var(--line);font-size:18px;font-weight:700;color:var(--ink2)}
+.freqrow .fv{font-family:var(--font-d);font-size:20px;font-weight:600;min-width:74px;text-align:center}
+.mact{display:flex;gap:10px;margin-top:22px}
+.mact button{flex:1;padding:13px;border-radius:12px;font-weight:700;font-size:15px}
+.btn-p{background:var(--accent);color:#141312}
+.btn-s{background:var(--raised);border:1px solid var(--line);color:var(--ink2)}
+.btn-d{background:none;border:1px solid #5A3128;color:var(--danger)}
+
+/* ============ SETĂRI ============ */
+.set-h{margin-top:22px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.setcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 14px;margin-top:8px}
+.setrow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.setrow:last-child{border-bottom:none}
+.setrow .sl{font-size:14.5px}
+.setrow .sd{font-size:12px;color:var(--ink3);margin-top:1px;line-height:1.35}
+.setrow input[type=time]{width:auto;padding:7px 10px}
+.setrow>button{color:var(--accent);font-weight:700;font-size:14px;flex:none}
+.setrow>button.dng{color:var(--danger)}
+.about p{font-size:13.5px;color:var(--ink2);padding:11px 0;line-height:1.55}
+.about b{color:var(--ink)}
+
+/* ============ ONBOARDING ============ */
+.onb{background:linear-gradient(150deg,#221D15,#1A1816);border:1px solid #3A311F;border-radius:20px;padding:22px 18px;margin-top:16px}
+.onb h2{font-size:20px;color:var(--accent)}
+.onb p{font-size:13.5px;color:var(--ink2);margin-top:9px;line-height:1.55}
+.onb b{color:var(--ink)}
+.onb button{margin-top:16px;background:var(--accent);color:#141312;font-weight:700;padding:11px 22px;border-radius:12px}
+
+/* ============ TAB BAR ============ */
+nav#tabs{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);border-top:1px solid var(--line);z-index:40;padding-bottom:env(safe-area-inset-bottom)}
+nav#tabs .in{max-width:480px;margin:0 auto;display:flex}
+nav#tabs button{flex:1;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink3);font-size:10.5px;font-weight:600;letter-spacing:.03em}
+nav#tabs button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav#tabs button.on{color:var(--accent)}
+.screen{display:none}
+.screen.on{display:block;animation:fade .25s}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}}
+.empty{color:var(--ink3);font-size:14px;text-align:center;padding:30px 10px;line-height:1.5}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><span class="logo">ATOMIC&nbsp;GVD</span><span id="hdrStreakGlobal" class="pill" style="border:none;background:none"></span></div>
+    <div class="datenav" id="datenav">
+      <div><h1 id="dTitle">Azi</h1><div class="sub" id="dSub"></div></div>
+      <div class="navbtns">
+        <button id="dPrev" aria-label="Ziua anterioară">‹</button>
+        <button id="dNext" aria-label="Ziua următoare">›</button>
+      </div>
+    </div>
+    <div class="todaychip" id="todaychip"><button id="dToday">Înapoi la azi</button></div>
+  </header>
+
+  <main>
+    <section class="screen on" id="scr-azi">
+      <div id="onb"></div>
+      <div class="votebar" id="votebar"></div>
+      <div class="hlist" id="hlist"></div>
+    </section>
+
+    <section class="screen" id="scr-rap">
+      <div class="seg" id="rapseg">
+        <button data-p="sapt" class="on">Săptămână</button>
+        <button data-p="luna">Lună</button>
+        <button data-p="an">An</button>
+      </div>
+      <div class="periodnav">
+        <h2 id="rapTitle"></h2>
+        <div class="navbtns">
+          <button id="rPrev" aria-label="Perioada anterioară">‹</button>
+          <button id="rNext" aria-label="Perioada următoare">›</button>
+        </div>
+      </div>
+      <div id="rapbody"></div>
+    </section>
+
+    <section class="screen" id="scr-obi">
+      <h2 style="font-size:22px;margin-top:16px">Obiceiurile tale</h2>
+      <p style="font-size:13px;color:var(--ink3);margin-top:4px">Maxim recomandat: 7 obiceiuri urmărite manual. Fiecare are o identitate în spate.</p>
+      <div id="mlist"></div>
+      <button class="addbtn" id="addHabit">+ Obicei nou</button>
+      <div id="marchived"></div>
+    </section>
+
+    <section class="screen" id="scr-set">
+      <h2 style="font-size:22px;margin-top:16px">Setări</h2>
+      <div id="setbody"></div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" role="status"></div>
+<div id="cele"><div class="box"><div class="big" id="celeN"></div><h2 id="celeT"></h2><p id="celeP"></p><button id="celeOk">Mai departe</button></div></div>
+<div id="modal"><div class="sheet" id="modalSheet"></div></div>
+
+<nav id="tabs"><div class="in">
+  <button data-s="azi" class="on"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Azi</button>
+  <button data-s="rap"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 6-6"/></svg>Rapoarte</button>
+  <button data-s="obi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Obiceiuri</button>
+  <button data-s="set"><svg viewBox="0 0 24 24"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>Setări</button>
+</div></nav>
+
+<script src="app.js"></script>
+</body>
+</html>
