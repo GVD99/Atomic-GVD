@@ -44,20 +44,27 @@ function load(){
   if(!S || !S.habits){
     S = {v:1, habits:seedHabits(), entries:{}, settings:{
       notifOn:false, notifAm:"07:30", notifPm:"21:30", onboarded:false, celebrated:{}, lastNotif:{}
-    }};
-    save();
+    }, meta:{updatedAt:0}, deleted:[]};
+    save(false);
   }
   if(!S.settings.celebrated) S.settings.celebrated={};
   if(!S.settings.lastNotif) S.settings.lastNotif={};
+  if(!S.meta) S.meta={updatedAt:0};
+  if(!S.deleted) S.deleted=[];
 }
-function save(){ try{ localStorage.setItem(LSKEY, JSON.stringify(S)); }catch(e){ toast("Nu am putut salva datele — spațiu insuficient?"); } }
+function save(touch=true){
+  if(touch) S.meta.updatedAt = Date.now();
+  try{ localStorage.setItem(LSKEY, JSON.stringify(S)); }catch(e){ toast("Nu am putut salva datele — spațiu insuficient?"); }
+  if(touch) scheduleSync();
+}
 
 /* ---------------- logica obiceiurilor ---------------- */
 const windowDays = h => h.lucratoare ? 5 : 7;
 const isDaily    = h => h.perWeek >= windowDays(h);
 const schedDay   = (h,d) => h.lucratoare ? isWorkday(d) : true;   // zi în care obiceiul „contează”
 const val        = (h,d) => (S.entries[d]||{})[h.id];
-const okDay      = (h,d) => { const v = val(h,d); if(v==null) return false; return h.tip==="somn" ? v>=h.tintaOre : !!v; };
+const isNum      = h => h.tip==="somn" || h.tip==="ore";   // obiceiuri măsurate în ore, cu țintă minimă
+const okDay      = (h,d) => { const v = val(h,d); if(v==null) return false; return isNum(h) ? v>=h.tintaOre : !!v; };
 const logged     = (h,d) => val(h,d) != null;
 
 function weekDays(ws, h){ // zilele programate din săptămâna care începe la ws
@@ -248,7 +255,11 @@ function renderAzi(){
     }
     meta += `<span class="pill num">${votes(h)} voturi</span>`;
 
-    if(h.tip==="somn"){
+    if(isNum(h)){
+      const somn = h.tip==="somn";
+      const doneWord = somn ? "dormite" : "lucrate";
+      const t0 = h.tintaOre;
+      const chipVals = somn ? [6,6.5,7,7.5,8] : [t0/2,t0*0.75,t0,t0+0.5,t0+1].map(x=>Math.round(x*4)/4).filter((x,i,a)=>x>0&&a.indexOf(x)===i);
       const v = val(h,viewDate);
       const shown = v!=null? v : (val(h,addDays(viewDate,-1)) ?? h.tintaOre);
       const avg = sleepWeekAvg(h, weekStart(viewDate));
@@ -258,11 +269,11 @@ function renderAzi(){
           <div class="hcue">${esc(h.cue||"")}</div>
           <div class="sleepctl">
             <button class="stepper" data-a="-">−</button>
-            <div class="val num">${v!=null?fmtH(v):"—"} <small>${v!=null?"dormite":"nescris"}</small></div>
+            <div class="val num">${v!=null?fmtH(v):"—"} <small>${v!=null?doneWord:"nescris"}</small></div>
             <button class="stepper" data-a="+">+</button>
             <button class="stepper" style="width:auto;padding:0 12px;font-size:13px;color:${v!=null&&v>=h.tintaOre?"var(--hc)":"var(--ink3)"}">${v!=null? (v>=h.tintaOre?"țintă atinsă":"sub "+fmtH(h.tintaOre)) : "notează"}</button>
           </div>
-          <div class="chips">${[6,6.5,7,7.5,8].map(x=>`<button data-h="${x}" class="num">${fmtH(x)}</button>`).join("")}</div>
+          <div class="chips">${chipVals.map(x=>`<button data-h="${x}" class="num">${fmtH(x)}</button>`).join("")}</div>
           <div class="hmeta">${meta}${avg!=null?`<span class="pill num">medie săpt: ${fmtH2(avg)}</span>`:""}</div>
           ${needsRescue(h)?rescueHtml(h):""}
         </div>`;
@@ -326,7 +337,7 @@ function setVal(h,d,v,firstSet){
   renderAzi();
   if(firstSet && v>=h.tintaOre){
     if(navigator.vibrate) navigator.vibrate(28);
-    toast(`${fmtH(v)} dormite — votul #${votes(h)} pentru: <b>${esc(h.identitate)}</b>.`);
+    toast(`${fmtH(v)} ${h.tip==="somn"?"dormite":"lucrate"} — votul #${votes(h)} pentru: <b>${esc(h.identitate)}</b>.`);
     const m=checkMilestone(h); if(m) setTimeout(()=>celebrate(m),650);
   }
 }
@@ -399,9 +410,10 @@ function renderRapSapt(body,ws,hs){
     const pct=Math.min(100,Math.round(hits/h.perWeek*100));
     const card=document.createElement("div"); card.className="card"; card.style.setProperty("--hc",h.culoare);
     let extra="";
-    if(h.tip==="somn"){
+    if(isNum(h)){
       const avg=sleepWeekAvg(h,ws);
-      extra = `<div class="statrow"><span>media orelor dormite</span><b class="num">${avg!=null?fmtH2(avg):"—"}</b></div>`;
+      const tot=weekDays(ws,h).map(d=>val(h,d)).filter(v=>v!=null).reduce((a,b)=>a+b,0);
+      extra = `<div class="statrow"><span>${h.tip==="somn"?"media orelor dormite":"total ore în săptămână"}</span><b class="num">${h.tip==="somn" ? (avg!=null?fmtH2(avg):"—") : fmtH2(tot)}</b></div>`;
     }
     const si=streakInfo(h);
     const days = wd.map(d=>{
@@ -440,12 +452,13 @@ function renderRapLuna(body,ms,me,hs){
     const card=document.createElement("div"); card.className="card"; card.style.setProperty("--hc",h.culoare);
     card.innerHTML=`<h3><span class="dot"></span>${esc(h.nume)}</h3><div class="sub">${esc(h.identitate)}</div>`;
     card.appendChild(heatGrid(h, ms, me));
-    if(h.tip==="somn"){
+    if(isNum(h)){
       card.appendChild(sleepChart(h, ms, me));
+      const p2=Math.round(h.tintaOre*0.75*4)/4;
       const lg=document.createElement("div"); lg.className="heatlbl";
-      lg.innerHTML=`<span><span class="sw" style="background:color-mix(in srgb,${h.culoare} 35%,var(--raised))"></span>&lt;6h</span>
-        <span><span class="sw" style="background:color-mix(in srgb,${h.culoare} 65%,var(--raised))"></span>6–7h</span>
-        <span><span class="sw" style="background:${h.culoare}"></span>≥7h</span>
+      lg.innerHTML=`<span><span class="sw" style="background:color-mix(in srgb,${h.culoare} 35%,var(--raised))"></span>&lt;${fmtH(p2)}</span>
+        <span><span class="sw" style="background:color-mix(in srgb,${h.culoare} 65%,var(--raised))"></span>${fmtH(p2)}–${fmtH(h.tintaOre)}</span>
+        <span><span class="sw" style="background:${h.culoare}"></span>≥${fmtH(h.tintaOre)}</span>
         <span><span class="sw" style="background:#2E2A25"></span>nescris</span>`;
       card.appendChild(lg);
     } else {
@@ -498,10 +511,10 @@ function heatGrid(h, from, to){
       if(d<from||d>to){ c.style.visibility="hidden"; }
       else if(!schedDay(h,d)) c.classList.add("off");
       else if(d>t || d<h.creat) {/* viitor sau înainte de start: neutru */}
-      else if(h.tip==="somn"){
+      else if(isNum(h)){
         const v=val(h,d);
         if(v==null) c.classList.add("miss");
-        else c.classList.add(v>=h.tintaOre?"p3":v>=6?"p2":"p1");
+        else c.classList.add(v>=h.tintaOre?"p3":v>=h.tintaOre*0.75?"p2":"p1");
       }
       else if(okDay(h,d)) c.classList.add("p3");
       else c.classList.add("miss");
@@ -524,7 +537,8 @@ function sleepChart(h, from, to){
   wrap.setAttribute("class","chart"); wrap.setAttribute("viewBox","0 0 340 120");
   const days = Math.round((fromIso(to)-fromIso(from))/864e5)+1;
   const X = s => 8 + (Math.round((fromIso(s)-fromIso(from))/864e5))/(days-1) * 324;
-  const lo=4, hi=10;
+  const maxV = pts.length? Math.max(...pts.map(p=>p.v)) : h.tintaOre;
+  const lo = h.tip==="somn"?4:0, hi = h.tip==="somn"?10:Math.max(h.tintaOre*2, Math.ceil(maxV+1));
   const Y = v => 108 - (Math.min(hi,Math.max(lo,v))-lo)/(hi-lo)*96;
   let g=`<line x1="8" y1="${Y(h.tintaOre)}" x2="332" y2="${Y(h.tintaOre)}" stroke="#3A311F" stroke-width="1" stroke-dasharray="4 4"/>
     <text x="332" y="${Y(h.tintaOre)-4}" text-anchor="end" font-size="9" fill="#6E675D" font-family="Karla,sans-serif">țintă ${fmtH(h.tintaOre)}</text>`;
@@ -584,7 +598,7 @@ function renderObi(){
       : h.perWeek+"× / săpt."+(h.lucratoare?" (Lu–Vi)":"");
     c.innerHTML=`<span class="cdot"></span>
       <div class="mb"><div class="mn">${esc(h.nume)}</div>
-      <div class="mi">${esc(h.identitate)} · ${freq}${h.tip==="somn"?" · țintă "+fmtH(h.tintaOre):""}${h.negativ?" · renunțare":""}</div></div>
+      <div class="mi">${esc(h.identitate)} · ${freq}${isNum(h)?" · țintă "+fmtH(h.tintaOre):""}${h.negativ?" · renunțare":""}</div></div>
       <div class="acts">
         <button title="Modifică" aria-label="Modifică ${esc(h.nume)}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
         <button title="Arhivează" aria-label="Arhivează ${esc(h.nume)}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></button>
@@ -606,6 +620,7 @@ function renderObi(){
       br.addEventListener("click",()=>{ h.arhivat=false; save(); renderObi(); });
       bd.addEventListener("click",()=>{
         confirmDlg(`Ștergi definitiv „${esc(h.nume)}” și tot istoricul lui?`, ()=>{
+          S.deleted.push(h.id);
           S.habits=S.habits.filter(x=>x.id!==h.id);
           Object.keys(S.entries).forEach(d=>{ if(S.entries[d][h.id]!=null){ delete S.entries[d][h.id]; if(!Object.keys(S.entries[d]).length) delete S.entries[d]; }});
           save(); renderObi(); toast("Șters definitiv.");
@@ -633,8 +648,9 @@ function openForm(h){
       <select id="f-tip">
         <option value="bifa" ${f.tip==="bifa"?"selected":""}>Bifă (făcut / nefăcut)</option>
         <option value="somn" ${f.tip==="somn"?"selected":""}>Ore de somn (numeric, cu țintă)</option>
+        <option value="ore" ${f.tip==="ore"?"selected":""}>Ore lucrate (numeric, cu țintă minimă)</option>
       </select></div>
-    <div class="field" id="f-tinta-w" style="display:${f.tip==="somn"?"block":"none"}"><label>Ținta de ore pe noapte</label>
+    <div class="field" id="f-tinta-w" style="display:${(f.tip==="somn"||f.tip==="ore")?"block":"none"}"><label>Ținta de ore${f.tip==="ore"?" pe zi bifată":" pe noapte"}</label>
       <div class="freqrow"><button id="f-tm">−</button><span class="fv num" id="f-tv">${fmtH(f.tintaOre)}</span><button id="f-tp">+</button></div></div>
     <div class="togglerow"><span>Obicei de renunțare („fără …”)<div class="hint">Bifezi ziua curată — votul rămâne pozitiv.</div></span><button class="tg ${f.negativ?"on":""}" id="f-neg" role="switch" aria-checked="${f.negativ}"><i></i></button></div>
     <div class="togglerow"><span>Doar zile lucrătoare (Lu–Vi)</span><button class="tg ${f.lucratoare?"on":""}" id="f-luc" role="switch" aria-checked="${f.lucratoare}"><i></i></button></div>
@@ -660,8 +676,8 @@ function openForm(h){
     $$("#f-cul button").forEach(b=>b.addEventListener("click",()=>{ f.culoare=b.dataset.c; syncCul(); }));
   };
   syncFreq(); syncCul();
-  $("#f-tip").addEventListener("change",e=>{ f.tip=e.target.value; $("#f-tinta-w").style.display=f.tip==="somn"?"block":"none"; });
-  $("#f-tm").addEventListener("click",()=>{ f.tintaOre=Math.max(4,f.tintaOre-0.5); $("#f-tv").textContent=fmtH(f.tintaOre); });
+  $("#f-tip").addEventListener("change",e=>{ f.tip=e.target.value; $("#f-tinta-w").style.display=(f.tip==="somn"||f.tip==="ore")?"block":"none"; if(f.tip==="ore"&&f.tintaOre>4){ f.tintaOre=2; $("#f-tv").textContent=fmtH(f.tintaOre); } });
+  $("#f-tm").addEventListener("click",()=>{ f.tintaOre=Math.max(0.5,f.tintaOre-0.5); $("#f-tv").textContent=fmtH(f.tintaOre); });
   $("#f-tp").addEventListener("click",()=>{ f.tintaOre=Math.min(12,f.tintaOre+0.5); $("#f-tv").textContent=fmtH(f.tintaOre); });
   $("#f-neg").addEventListener("click",e=>{ f.negativ=!f.negativ; e.currentTarget.classList.toggle("on",f.negativ); });
   $("#f-luc").addEventListener("click",e=>{ f.lucratoare=!f.lucratoare; e.currentTarget.classList.toggle("on",f.lucratoare); syncFreq(); });
@@ -670,6 +686,7 @@ function openForm(h){
   $("#f-cancel").addEventListener("click",closeModal);
   if(!isNew) $("#f-del").addEventListener("click",()=>{
     confirmDlg(`Ștergi definitiv „${esc(f.nume)}” și tot istoricul lui? (Alternativ: arhivează-l — istoricul rămâne.)`,()=>{
+      S.deleted.push(f.id);
       S.habits=S.habits.filter(x=>x.id!==f.id);
       Object.keys(S.entries).forEach(d=>{ if(S.entries[d][f.id]!=null){ delete S.entries[d][f.id]; if(!Object.keys(S.entries[d]).length) delete S.entries[d]; }});
       save(); closeModal(); render(); toast("Șters.");
@@ -709,6 +726,21 @@ function renderSet(){
     <div class="setrow"><div class="sl">Dimineața (somn, înot)</div><input type="time" id="s-am" value="${st.notifAm}"></div>
     <div class="setrow"><div class="sl">Seara (restul bifelor)</div><input type="time" id="s-pm" value="${st.notifPm}"></div>
   </div>
+  <div class="set-h">Sincronizare între dispozitive</div>
+  <div class="setcard" id="s-synccard">
+    ${st.syncOn ? `
+    <div class="setrow"><div><div class="sl">Sincronizare activă</div><div class="sd" id="s-syncstat">${st.lastSyncAt? "Ultima sincronizare: "+new Date(st.lastSyncAt).toLocaleString("ro-RO",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}) : "Încă nesincronizat"}</div></div>
+      <button id="s-syncnow">Sincronizează</button></div>
+    <div class="setrow"><div><div class="sl">Deconectează acest dispozitiv</div><div class="sd">Datele locale rămân; se oprește doar sincronizarea.</div></div><button class="dng" id="s-syncoff">Oprește</button></div>
+    ` : `
+    <div class="setrow" style="display:block">
+      <div class="sl">Sincronizare automată prin GitHub</div>
+      <div class="sd" style="margin:6px 0 10px">Bifele se salvează într-un spațiu privat (gist secret) din contul tău GitHub și apar automat pe toate dispozitivele conectate. Pași: pe github.com → Settings → Developer settings → <b>Personal access tokens → Tokens (classic)</b> → Generate new token (classic) → bifezi DOAR căsuța <b>gist</b> → Generate → copiezi codul „ghp_…” și îl lipești aici. Același token îl lipești și pe laptop.</div>
+      <input id="s-token" type="password" placeholder="ghp_..." autocomplete="off" style="margin-bottom:10px">
+      <button class="btn-p" id="s-syncon" style="width:100%;padding:11px;border-radius:10px;font-weight:700">Conectează</button>
+      <div class="sd" id="s-syncmsg" style="margin-top:8px"></div>
+    </div>`}
+  </div>
   <div class="set-h">Datele tale</div>
   <div class="setcard">
     <div class="setrow"><div><div class="sl">Exportă istoricul</div><div class="sd">Fișier JSON de backup — păstrează-l în Google Drive sau trimite-ți-l pe e-mail.</div></div><button id="s-exp">Exportă</button></div>
@@ -734,6 +766,23 @@ function renderSet(){
   });
   $("#s-am").addEventListener("change",e=>{ st.notifAm=e.target.value; save(); });
   $("#s-pm").addEventListener("change",e=>{ st.notifPm=e.target.value; save(); });
+  if(st.syncOn){
+    $("#s-syncnow").addEventListener("click",()=>syncNow(true));
+    $("#s-syncoff").addEventListener("click",()=>{
+      st.syncOn=false; st.ghToken=""; save(false); renderSet(); toast("Sincronizarea a fost oprită pe acest dispozitiv.");
+    });
+  } else {
+    $("#s-syncon").addEventListener("click",async ()=>{
+      const tok=$("#s-token").value.trim();
+      const msg=$("#s-syncmsg");
+      if(!tok){ msg.textContent="Lipește întâi token-ul."; return; }
+      msg.textContent="Mă conectez la GitHub…";
+      try{
+        await syncConnect(tok);
+        renderSet(); toast("Sincronizare activată. Datele sunt acum în contul tău GitHub.");
+      }catch(e){ msg.textContent="Nu a mers: "+(e.message||"verifică token-ul (trebuie să aibă doar dreptul «gist»).") ; }
+    });
+  }
   $("#s-exp").addEventListener("click",exportJson);
   $("#s-imp").addEventListener("click",importJson);
   $("#s-reset").addEventListener("click",()=>{
@@ -743,7 +792,9 @@ function renderSet(){
   });
 }
 function exportJson(){
-  const data=JSON.stringify(S,null,1);
+  const cp=JSON.parse(JSON.stringify(S));
+  if(cp.settings){ delete cp.settings.ghToken; delete cp.settings.gistId; delete cp.settings.syncOn; }
+  const data=JSON.stringify(cp,null,1);
   const blob=new Blob([data],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -763,6 +814,7 @@ function importJson(){
         const d=JSON.parse(r.result);
         if(!d||!Array.isArray(d.habits)||typeof d.entries!=="object") throw 0;
         S=d; if(!S.settings) S.settings={notifOn:false,notifAm:"07:30",notifPm:"21:30",onboarded:true,celebrated:{},lastNotif:{}};
+        if(!S.meta) S.meta={updatedAt:Date.now()}; if(!S.deleted) S.deleted=[];
         save(); render();
         toast("Istoric importat: "+d.habits.length+" obiceiuri, "+Object.keys(d.entries).length+" zile.");
       }catch(e){ toast("Fișier invalid — alege un backup Atomic GVD (.json)."); }
@@ -771,6 +823,92 @@ function importJson(){
   });
   inp.click();
 }
+
+/* ---------------- sincronizare prin GitHub Gist ---------------- */
+const GIST_DESC="atomic-gvd-sync", GIST_FILE="atomic-gvd.json";
+let syncTimer=null, syncBusy=false;
+const ghHeaders = () => ({ "Authorization":"Bearer "+S.settings.ghToken, "Accept":"application/vnd.github+json" });
+
+function syncPayload(){
+  const cp=JSON.parse(JSON.stringify(S));
+  if(cp.settings){ delete cp.settings.ghToken; delete cp.settings.gistId; delete cp.settings.syncOn; delete cp.settings.lastSyncAt; delete cp.settings.lastNotif; }
+  return JSON.stringify(cp);
+}
+function scheduleSync(){
+  if(!S.settings.syncOn) return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>syncNow(false), 4000);
+}
+async function syncConnect(tok){
+  // caută gist-ul existent sau creează unul secret
+  const r=await fetch("https://api.github.com/gists?per_page=100",{headers:{ "Authorization":"Bearer "+tok, "Accept":"application/vnd.github+json" }});
+  if(r.status===401) throw new Error("token invalid sau expirat");
+  if(!r.ok) throw new Error("GitHub a răspuns cu eroarea "+r.status);
+  const list=await r.json();
+  let g=list.find(x=>x.description===GIST_DESC && x.files && x.files[GIST_FILE]);
+  S.settings.ghToken=tok;
+  if(!g){
+    const c=await fetch("https://api.github.com/gists",{method:"POST",headers:{ "Authorization":"Bearer "+tok, "Accept":"application/vnd.github+json" },
+      body:JSON.stringify({description:GIST_DESC, public:false, files:{[GIST_FILE]:{content:syncPayload()}}})});
+    if(!c.ok) throw new Error("nu am putut crea spațiul de sincronizare ("+c.status+")");
+    g=await c.json();
+  }
+  S.settings.gistId=g.id;
+  S.settings.syncOn=true;
+  save(false);
+  await syncNow(true);
+}
+function mergeStates(a,b){
+  const an=a.meta?.updatedAt||0, bn=b.meta?.updatedAt||0;
+  const newer=an>=bn?a:b, older=an>=bn?b:a;
+  const del=[...new Set([...(a.deleted||[]),...(b.deleted||[])])];
+  const ids=[...new Set([...(newer.habits||[]).map(h=>h.id),...(older.habits||[]).map(h=>h.id)])];
+  const habits=[];
+  ids.forEach(id=>{
+    if(del.includes(id)) return;
+    const hn=(newer.habits||[]).find(h=>h.id===id), ho=(older.habits||[]).find(h=>h.id===id);
+    habits.push(hn||ho);
+  });
+  const entries={};
+  [...new Set([...Object.keys(a.entries||{}),...Object.keys(b.entries||{})])].forEach(d=>{
+    entries[d]={...(older.entries?.[d]||{}),...(newer.entries?.[d]||{})};
+    del.forEach(id=>delete entries[d][id]);
+    if(!Object.keys(entries[d]).length) delete entries[d];
+  });
+  const settings={...older.settings,...newer.settings,
+    celebrated:{...(older.settings?.celebrated||{}),...(newer.settings?.celebrated||{})}};
+  // token/gist/notificări rămân cele locale ale acestui dispozitiv
+  ["ghToken","gistId","syncOn","lastSyncAt","lastNotif","notifOn","notifAm","notifPm"].forEach(k=>{ if(S.settings[k]!==undefined) settings[k]=S.settings[k]; });
+  return {v:1,habits,entries,settings,deleted:del,meta:{updatedAt:Math.max(an,bn)}};
+}
+async function syncNow(manual){
+  const st=S.settings;
+  if(!st.syncOn||!st.ghToken||!st.gistId||syncBusy) return;
+  syncBusy=true;
+  const stat=document.getElementById("s-syncstat");
+  if(stat&&manual) stat.textContent="Sincronizez…";
+  try{
+    const r=await fetch("https://api.github.com/gists/"+st.gistId,{headers:ghHeaders()});
+    if(r.status===404){ st.gistId=""; syncBusy=false; return syncConnect(st.ghToken); }
+    if(!r.ok) throw new Error("GitHub "+r.status);
+    const g=await r.json();
+    let remote={};
+    try{ remote=JSON.parse(g.files[GIST_FILE].content); }catch(e){ remote=S; }
+    const merged=mergeStates(S,remote);
+    S=merged; save(false);
+    const p=await fetch("https://api.github.com/gists/"+st.gistId,{method:"PATCH",headers:ghHeaders(),
+      body:JSON.stringify({files:{[GIST_FILE]:{content:syncPayload()}}})});
+    if(!p.ok) throw new Error("GitHub "+p.status);
+    st.lastSyncAt=Date.now(); save(false);
+    if(scr==="set") renderSet(); else render();
+    if(manual) toast("Sincronizat.");
+  }catch(e){
+    if(stat) stat.textContent="Eroare de sincronizare: "+(e.message||"fără internet?");
+    if(manual) toast("Nu am putut sincroniza — verifică internetul sau token-ul.");
+  }
+  syncBusy=false;
+}
+window.addEventListener("online",()=>syncNow(false));
 
 /* ---------------- notificări locale (best effort) ---------------- */
 function notifTick(){
@@ -806,8 +944,9 @@ notifTick();
 
 /* la revenirea în aplicație, sari la ziua curentă dacă s-a schimbat data */
 document.addEventListener("visibilitychange",()=>{
-  if(!document.hidden){ if(viewDate!==todayIso() && scr==="azi"){} render(); notifTick(); }
+  if(!document.hidden){ if(viewDate!==todayIso() && scr==="azi"){} render(); notifTick(); syncNow(false); }
 });
+syncNow(false);
 
 /* service worker */
 if("serviceWorker" in navigator){

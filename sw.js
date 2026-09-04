@@ -1,5 +1,5 @@
 /* Atomic GVD — service worker: funcționare offline */
-const VER = "agvd-v1";
+const VER = "agvd-v3";
 const SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
