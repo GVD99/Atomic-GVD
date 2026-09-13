@@ -38,6 +38,23 @@ function seedHabits(){
   ];
 }
 
+/* ---------------- abonamente: categorii, titulari, date inițiale ---------------- */
+const CAT_DEF = ["Sănătate","Divertisment","Profesional","Casă — auto","Casă — general"];
+const TIT_DEF = ["George","Casă","Familie"];
+const CURS_DEF = 5.08;   // RON pentru 1 EUR — se schimbă din Setări
+function seedSubs(){
+  return [
+    {id:"s1", nume:"Abonament înot",  categorie:"Sănătate",      titular:"George", moneda:"RON", pret:500, recTip:"zile", recN:30, start:"2026-10-20", auto:false, obs:"4 ședințe incluse", sesiuniTotal:4, sesiuni:[], activ:true},
+    {id:"s2", nume:"Netflix",         categorie:"Divertisment",  titular:"George", moneda:"EUR", pret:5,   recTip:"zile", recN:30, start:"2026-08-30", auto:true,  obs:"", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s3", nume:"Duolingo",        categorie:"Divertisment",  titular:"George", moneda:"RON", pret:500, recTip:"ani",  recN:1,  start:"2026-05-20", auto:true,  obs:"", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s4", nume:"Praktika",        categorie:"Profesional",   titular:"George", moneda:"RON", pret:500, recTip:"ani",  recN:1,  start:"2026-05-30", auto:true,  obs:"", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s5", nume:"Rovinietă",       categorie:"Casă — auto",   titular:"Casă",   moneda:"RON", pret:130, recTip:"ani",  recN:1,  start:"2026-08-30", auto:false, obs:"", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s6", nume:"ITP",             categorie:"Casă — auto",   titular:"Casă",   moneda:"RON", pret:200, recTip:"ani",  recN:2,  start:"2024-09-20", auto:false, obs:"ITP Brașov", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s7", nume:"Asigurare RCA",   categorie:"Casă — auto",   titular:"Casă",   moneda:"RON", pret:1000,recTip:"ani",  recN:1,  start:"2025-10-02", auto:false, obs:"Omniasig", sesiuniTotal:0, sesiuni:[], activ:true},
+    {id:"s8", nume:"Digi",            categorie:"Casă — general",titular:"Casă",   moneda:"RON", pret:64,  recTip:"luni", recN:1,  start:"2026-05-02", auto:true,  obs:"reînnoire automată", sesiuniTotal:0, sesiuni:[], activ:true},
+  ];
+}
+
 let S;
 function load(){
   try{ S = JSON.parse(localStorage.getItem(LSKEY)); }catch(e){ S=null; }
@@ -51,6 +68,11 @@ function load(){
   if(!S.settings.lastNotif) S.settings.lastNotif={};
   if(!S.meta) S.meta={updatedAt:0};
   if(!S.deleted) S.deleted=[];
+  if(!S.subs){ S.subs=seedSubs(); S.subsDeleted=[]; save(false); }   // migrare: primele abonamente
+  if(!S.subsDeleted) S.subsDeleted=[];
+  if(!S.settings.curs) S.settings.curs=CURS_DEF;
+  if(!S.settings.categorii) S.settings.categorii=[...CAT_DEF];
+  if(!S.settings.titulari) S.settings.titulari=[...TIT_DEF];
 }
 function save(touch=true){
   if(touch) S.meta.updatedAt = Date.now();
@@ -73,48 +95,66 @@ function weekDays(ws, h){ // zilele programate din săptămâna care începe la 
 function weekHits(h, ws){ return weekDays(ws,h).filter(d=>okDay(h,d)).length; }
 function weekMet(h, ws){ return weekHits(h,ws) >= h.perWeek; }
 
-/* streak zilnic (pentru obiceiuri 7/7 sau 5/5): consecutiv, azi nu rupe dacă e încă nebifat */
+/* ---- SERIE CU DREPT LA O OMISIUNE ----
+   Regula: o zi ratată nu rupe seria (ai dreptul la o omisiune).
+   Seria se încheie doar la 2 zile ratate consecutiv.
+   Ziua de azi, încă nebifată, nu se consideră ratată — mai ai timp. */
 function dailyStreak(h){
   const t = todayIso();
-  let d = okDay(h,t) ? t : addDays(t,-1);
-  let n = okDay(h,t) ? 1 : 0;
-  if(!okDay(h,t)) { /* pornim de ieri */ }
-  let cur = okDay(h,t) ? addDays(t,-1) : d;
+  let n = okDay(h,t) ? 1 : 0, grace=0, consec=0;
+  let cur = addDays(t,-1);
   while(cur >= h.creat){
     if(!schedDay(h,cur)){ cur=addDays(cur,-1); continue; }
-    if(okDay(h,cur)){ n++; cur=addDays(cur,-1); } else break;
+    if(okDay(h,cur)){ n++; consec=0; }
+    else { consec++; if(consec>=2) break; grace++; }
+    cur=addDays(cur,-1);
   }
-  return n;
+  return {n, grace};
 }
 function bestDailyStreak(h){
-  let best=0, n=0, d=h.creat, t=todayIso();
+  let best=0, n=0, consec=0, d=h.creat, t=todayIso();
   while(d<=t){
-    if(schedDay(h,d)){ if(okDay(h,d)){ n++; if(n>best)best=n; } else n=0; }
+    if(schedDay(h,d)){
+      if(okDay(h,d)){ n++; consec=0; if(n>best)best=n; }
+      else { consec++; if(consec>=2){ n=0; consec=0; } }
+    }
     d=addDays(d,1);
   }
   return best;
 }
-/* streak săptămânal: săptămâni consecutive cu ținta atinsă; săpt. curentă se include doar dacă e deja atinsă */
+/* serie săptămânală, aceeași regulă: o săptămână ratată e iertată, două la rând încheie seria.
+   Săptămâna curentă, încă neîncheiată, nu se consideră ratată. */
 function weeklyStreak(h){
   const cw = weekStart(todayIso());
-  let n=0, w = weekMet(h,cw) ? cw : addDays(cw,-7);
-  while(w >= weekStart(h.creat) || w >= addDays(weekStart(h.creat),0)){
-    if(w < weekStart(h.creat)) break;
-    if(weekMet(h,w)){ n++; w=addDays(w,-7); } else break;
+  const firstW = weekStart(h.creat);
+  let n = weekMet(h,cw) ? 1 : 0, grace=0, consec=0;
+  let w = addDays(cw,-7);
+  while(w >= firstW){
+    if(weekMet(h,w)){ n++; consec=0; }
+    else { consec++; if(consec>=2) break; grace++; }
+    w=addDays(w,-7);
   }
-  return n;
+  return {n, grace};
 }
 function bestWeeklyStreak(h){
-  let best=0,n=0, w=weekStart(h.creat); const cw=weekStart(todayIso());
+  let best=0,n=0,consec=0, w=weekStart(h.creat); const cw=weekStart(todayIso());
   while(w<=cw){
-    if(weekMet(h,w)){ n++; if(n>best)best=n; } else if(w<cw){ n=0; }
+    if(weekMet(h,w)){ n++; consec=0; if(n>best)best=n; }
+    else if(w<cw){ consec++; if(consec>=2){ n=0; consec=0; } }
     w=addDays(w,7);
   }
   return best;
 }
 function streakInfo(h){
-  if(isDaily(h)) return {n:dailyStreak(h), unit:"zile", best:bestDailyStreak(h)};
-  return {n:weeklyStreak(h), unit:"săpt.", best:bestWeeklyStreak(h)};
+  if(isDaily(h)){ const s=dailyStreak(h); return {n:s.n, grace:s.grace, unit:"zile", best:bestDailyStreak(h)}; }
+  const s=weeklyStreak(h); return {n:s.n, grace:s.grace, unit:"săpt.", best:bestWeeklyStreak(h)};
+}
+/* seria e în pericol: ultima zi programată a fost ratată, iar azi e încă nebifat */
+function streakAtRisk(h){
+  const t=todayIso();
+  if(okDay(h,t) || !schedDay(h,t)) return false;
+  let y=addDays(t,-1); while(y>=h.creat && !schedDay(h,y)) y=addDays(y,-1);
+  return y>=h.creat && !okDay(h,y);
 }
 /* voturi = totalul zilelor reușite */
 function votes(h){
@@ -130,14 +170,10 @@ function strength(h){
   if(okDay(h,t)) s = s*(1-k)+k;
   return any? Math.round(s*100) : 0;
 }
-/* never miss twice: ieri programat & ratat & alaltăieri reușit (doar obiceiuri zilnice) */
+/* never miss twice: ieri programat & ratat & azi încă nebifat (doar obiceiuri zilnice) */
 function needsRescue(h){
   if(!isDaily(h)) return false;
-  const t=todayIso(); if(okDay(h,t)) return false;
-  let y=addDays(t,-1); while(y>=h.creat && !schedDay(h,y)) y=addDays(y,-1);
-  if(y<h.creat || okDay(h,y)) return false;
-  let y2=addDays(y,-1); while(y2>=h.creat && !schedDay(h,y2)) y2=addDays(y2,-1);
-  return y2>=h.creat && okDay(h,y2);
+  return streakAtRisk(h);
 }
 const activeHabits = () => S.habits.filter(h=>!h.arhivat);
 
@@ -184,6 +220,9 @@ document.querySelectorAll("nav#tabs button").forEach(b=>{
     window.scrollTo({top:0});
   });
 });
+document.querySelectorAll("#aboseg button").forEach(b=>b.addEventListener("click",()=>{
+  aboMode=b.dataset.m; aboAnchor=todayIso(); renderAbo(); window.scrollTo({top:0});
+}));
 $("#dPrev").addEventListener("click",()=>{ viewDate=addDays(viewDate,-1); renderAzi(); });
 $("#dNext").addEventListener("click",()=>{ if(viewDate<todayIso()){ viewDate=addDays(viewDate,1); renderAzi(); } });
 $("#dToday").addEventListener("click",()=>{ viewDate=todayIso(); renderAzi(); });
@@ -195,9 +234,13 @@ function toast(msg){
   clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2600);
 }
 function celebrate(m){
-  $("#celeN").textContent = m.n;
-  $("#celeT").textContent = m.n+" "+(m.unit==="zile"?"zile":"săptămâni")+" — "+m.h.nume;
-  $("#celeP").textContent = MILE_MSG[m.n+":"+m.unit] || "Continuă tot așa.";
+  celebrateFree(m.n+" "+(m.unit==="zile"?"zile":"săptămâni")+" — "+m.h.nume, m.n,
+    MILE_MSG[m.n+":"+m.unit] || "Continuă tot așa.");
+}
+function celebrateFree(titlu, mare, text){
+  $("#celeN").textContent = mare;
+  $("#celeT").textContent = titlu;
+  $("#celeP").textContent = text;
   $("#cele").classList.add("show");
   if(navigator.vibrate) navigator.vibrate([40,60,40]);
 }
@@ -222,18 +265,37 @@ function renderAzi(){
     $("#onbOk").addEventListener("click",()=>{ S.settings.onboarded=true; save(); renderAzi(); });
   } else onb.innerHTML="";
 
+  // alertă abonamente (doar pe ziua curentă)
+  renderAboAlert(isToday);
+
   // bara de voturi
   const hs = activeHabits();
   const doneToday = hs.filter(h=>okDay(h,viewDate)).length;
   const schedToday = hs.filter(h=>schedDay(h,viewDate)).length;
+  const ramase = schedToday-doneToday;
   const totalVotes = hs.reduce((a,h)=>a+votes(h),0);
-  $("#votebar").innerHTML = `<div><div class="n num">${doneToday}<span style="font-size:15px;color:var(--ink2)">/${schedToday}</span></div>
-    <div class="t">voturi ${isToday?"azi":"în această zi"}</div></div>
-    <div style="text-align:right"><div class="n num" style="font-size:19px">${totalVotes}</div><div class="t">voturi în total,<br>pentru cine devii</div></div>`;
+  const incurajare = schedToday===0 ? "zi liberă" :
+    ramase===0 ? "zi completă — toate bifate" :
+    doneToday===0 ? "prima bifă e cea mai grea" :
+    ramase===1 ? "a mai rămas una singură" : `au mai rămas ${ramase}`;
+  $("#votebar").innerHTML = `<div style="flex:1"><div class="n num">${doneToday}<span style="font-size:15px;color:var(--ink2)">/${schedToday}</span></div>
+    <div class="t">voturi ${isToday?"azi":"în această zi"} · ${incurajare}</div>
+    <div class="vbar"><i style="width:${schedToday?Math.round(doneToday/schedToday*100):0}%"></i></div></div>
+    <div style="text-align:right;padding-left:12px"><div class="n num" style="font-size:19px">${totalVotes}</div><div class="t">voturi în total,<br>pentru cine devii</div></div>`;
 
-  // lista
+  // lista — întâi ce e de făcut, la urmă ce e deja bifat
   const list=$("#hlist"); list.innerHTML="";
-  hs.forEach(h=>{
+  const rank = h => !schedDay(h,viewDate) ? 2 : (okDay(h,viewDate) ? 1 : 0);
+  const ordonate = hs.map((h,i)=>({h,i})).sort((a,b)=> rank(a.h)-rank(b.h) || a.i-b.i).map(x=>x.h);
+  let ultimRank=-1;
+  ordonate.forEach(h=>{
+    const r=rank(h);
+    if(r!==ultimRank && r>0 && ordonate.some(x=>rank(x)<r)){
+      const sep=document.createElement("div"); sep.className="listsep";
+      sep.textContent = r===1 ? "Făcute azi" : "În afara programului";
+      list.appendChild(sep);
+    }
+    ultimRank=r;
     const off = !schedDay(h,viewDate);
     const done = okDay(h,viewDate);
     const si = streakInfo(h);
@@ -244,6 +306,8 @@ function renderAzi(){
     let meta="";
     if(isDaily(h)){
       meta += `<span class="pill ${si.n>0?'hot':''} num">serie: ${si.n} ${si.unit}</span>`;
+      if(streakAtRisk(h) && si.n>0) meta += `<span class="pill warn">ziua liberă e folosită</span>`;
+      else if(si.grace>0) meta += `<span class="pill num" title="zile ratate iertate în seria curentă">${si.grace} ${si.grace===1?"zi liberă":"zile libere"}</span>`;
     } else {
       const ws=weekStart(viewDate), hits=weekHits(h,ws);
       const dots = Array.from({length:h.perWeek},(_,i)=>`<i class="${i<hits?'on':''}"></i>`).join("");
@@ -304,7 +368,9 @@ function renderAzi(){
   });
 }
 function rescueHtml(h){
-  return `<div class="rescue"><b>Ai ratat ieri.</b> A rata o dată e accident — a rata de două ori e începutul unui alt obicei. Azi e de-ajuns varianta de 2 minute.</div>`;
+  const si=streakInfo(h);
+  if(si.n>0) return `<div class="rescue"><b>Ți-ai folosit ziua liberă ieri — seria de ${si.n} ${si.unit} e încă intactă.</b> Azi o salvezi definitiv; e de-ajuns și varianta de 2 minute.</div>`;
+  return `<div class="rescue"><b>Reîncepem azi.</b> O zi ratată nu șterge nimic din ce ai construit — seriile se reiau, munca rămâne. Fă și varianta mică, contează la fel.</div>`;
 }
 function sleepWeekAvg(h, ws){
   const vals = weekDays(ws,h).map(d=>val(h,d)).filter(v=>v!=null);
@@ -322,24 +388,42 @@ function toggle(h){
   }
   if(!S.entries[d]) S.entries[d]={};
   S.entries[d][h.id]=1; save();
+  afterDone(h);
+}
+/* felicitarea imediată — recompensa care face bifa să merite (legea 4) */
+function afterDone(h, prefix){
   if(navigator.vibrate) navigator.vibrate(28);
   renderAzi();
-  const v=votes(h);
-  const msgs = h.negativ
-    ? [`Zi curată. Votul #${v} pentru: <b>${esc(h.identitate)}</b>.`,`Ai rezistat. #${v} pentru <b>${esc(h.identitate)}</b>.`]
-    : [`Votul #${v} pentru: <b>${esc(h.identitate)}</b>.`,`Așa arată un ${esc(h.identitate.toLowerCase())}. Votul #${v}.`];
-  toast(msgs[v%msgs.length]);
-  const m=checkMilestone(h); if(m) setTimeout(()=>celebrate(m),650);
+  const v=votes(h), si=streakInfo(h);
+  const ident=esc(h.identitate||"omul care își ține promisiunile");
+  const pool = h.negativ
+    ? [`Zi curată. Votul #${v} pentru: <b>${ident}</b>.`,
+       `Ai rezistat — încă un vot pentru <b>${ident}</b>. Al ${v}-lea.`,
+       `Bravo. Fiecare zi ca asta întărește <b>${ident}</b>.`]
+    : [`Felicitări — votul #${v} pentru: <b>${ident}</b>.`,
+       `Bifat. Așa arată <b>${ident}</b> — al ${v}-lea vot.`,
+       `Bravo! Încă un vot pentru <b>${ident}</b> (#${v}).`];
+  if(si.n>=3) pool.push(`Felicitări — serie de <b>${si.n} ${si.unit==="zile"?"zile":"săptămâni"}</b>. Ții ritmul.`);
+  toast((prefix?prefix+" ":"")+pool[v%pool.length]);
+  const m=checkMilestone(h);
+  if(m){ setTimeout(()=>celebrate(m),700); return; }
+  // zi completă: toate obiceiurile programate azi sunt bifate
+  if(viewDate===todayIso()){
+    const hs=activeHabits().filter(x=>schedDay(x,viewDate));
+    if(hs.length>1 && hs.every(x=>okDay(x,viewDate))){
+      const key="perfect:"+viewDate;
+      if(!S.settings.celebrated[key]){
+        S.settings.celebrated[key]=1; save(false);
+        setTimeout(()=>celebrateFree("Zi completă","✓","Toate obiceiurile de azi, bifate. Zilele ca asta sunt cele care compun identitatea — nu cele mari și rare."),700);
+      }
+    }
+  }
 }
 function setVal(h,d,v,firstSet){
   if(!S.entries[d]) S.entries[d]={};
   S.entries[d][h.id]=Math.round(v*100)/100; save();
-  renderAzi();
-  if(firstSet && v>=h.tintaOre){
-    if(navigator.vibrate) navigator.vibrate(28);
-    toast(`${fmtH(v)} ${h.tip==="somn"?"dormite":"lucrate"} — votul #${votes(h)} pentru: <b>${esc(h.identitate)}</b>.`);
-    const m=checkMilestone(h); if(m) setTimeout(()=>celebrate(m),650);
-  }
+  if(firstSet && v>=h.tintaOre) afterDone(h, `${fmtH(v)} ${h.tip==="somn"?"dormite":"lucrate"} —`);
+  else renderAzi();
 }
 
 /* ---------------- RAPOARTE ---------------- */
@@ -726,6 +810,11 @@ function renderSet(){
     <div class="setrow"><div class="sl">Dimineața (somn, înot)</div><input type="time" id="s-am" value="${st.notifAm}"></div>
     <div class="setrow"><div class="sl">Seara (restul bifelor)</div><input type="time" id="s-pm" value="${st.notifPm}"></div>
   </div>
+  <div class="set-h">Curs valutar</div>
+  <div class="setcard">
+    <div class="setrow"><div><div class="sl">Curs RON / EUR</div><div class="sd">Câți lei pentru 1 euro. Toate conversiile din abonamente îl folosesc. Actualizează-l când se schimbă semnificativ (cursul BNR de final de lună).</div></div>
+      <input id="s-curs" type="number" inputmode="decimal" step="0.0001" min="0.5" value="${st.curs||CURS_DEF}" style="width:110px;text-align:right"></div>
+  </div>
   <div class="set-h">Sincronizare între dispozitive</div>
   <div class="setcard" id="s-synccard">
     ${st.syncOn ? `
@@ -752,6 +841,8 @@ function renderSet(){
     <p><b>Atomic GVD</b> aplică metoda din <b>Atomic Habits</b> (James Clear): fă obiceiul <b>evident</b> (indiciul de pe fiecare card), <b>atractiv</b> (identitatea pentru care votezi), <b>ușor</b> (bifare într-o atingere, regula celor 2 minute) și <b>satisfăcător</b> (lanțul, seriile, voturile).</p>
     <p>Un obicei se formează în medie în <b>66 de zile</b> (studiul Lally, UCL, interval 18–254). O zi ratată nu strică nimic. Regula de aur: <b>nu rata de două ori la rând</b>.</p>
     <p>Seriile pentru obiceiurile de 2–3 ori pe săptămână se numără în <b>săptămâni reușite</b> — o zi de luni fără înot nu e o ratare.</p>
+    <p><b>Ai dreptul la o omisiune:</b> o zi (sau o săptămână) ratată nu rupe seria. Seria se încheie doar la <b>două ratări consecutive</b>. Obiceiurile bifate coboară automat la finalul listei, ca să rămână vizibil ce mai ai de făcut.</p>
+    <p>Secțiunea <b>Abonamente</b> ține evidența costurilor recurente, cu conversie RON ⇄ EUR la cursul din Setări, alertă cu 7 zile înainte de termen și rapoarte lunare și anuale.</p>
     <p style="color:var(--ink3)">Datele rămân doar pe telefonul tău. v1.0</p>
   </div>`;
   $("#s-notif").addEventListener("click",async e=>{
@@ -763,6 +854,11 @@ function renderSet(){
       st.notifOn=true;
     } else st.notifOn=false;
     e.target.closest(".tg").classList.toggle("on",st.notifOn); save();
+  });
+  $("#s-curs").addEventListener("change",e=>{
+    const v=parseFloat(e.target.value);
+    if(v>0.5){ st.curs=v; save(); toast("Curs actualizat: "+v.toLocaleString("ro-RO",{maximumFractionDigits:4})+" RON/EUR."); }
+    else e.target.value=st.curs||CURS_DEF;
   });
   $("#s-am").addEventListener("change",e=>{ st.notifAm=e.target.value; save(); });
   $("#s-pm").addEventListener("change",e=>{ st.notifPm=e.target.value; save(); });
@@ -862,6 +958,14 @@ function mergeStates(a,b){
   const an=a.meta?.updatedAt||0, bn=b.meta?.updatedAt||0;
   const newer=an>=bn?a:b, older=an>=bn?b:a;
   const del=[...new Set([...(a.deleted||[]),...(b.deleted||[])])];
+  // abonamente: cel mai recent dispozitiv câștigă pe fiecare abonament; ștergerile se propagă
+  const sdel=[...new Set([...(a.subsDeleted||[]),...(b.subsDeleted||[])])];
+  const sids=[...new Set([...((newer.subs)||[]).map(s=>s.id),...((older.subs)||[]).map(s=>s.id)])];
+  const subs=[];
+  sids.forEach(id=>{ if(sdel.includes(id)) return;
+    const sn=(newer.subs||[]).find(s=>s.id===id), so=(older.subs||[]).find(s=>s.id===id);
+    subs.push(sn||so);
+  });
   const ids=[...new Set([...(newer.habits||[]).map(h=>h.id),...(older.habits||[]).map(h=>h.id)])];
   const habits=[];
   ids.forEach(id=>{
@@ -876,10 +980,12 @@ function mergeStates(a,b){
     if(!Object.keys(entries[d]).length) delete entries[d];
   });
   const settings={...older.settings,...newer.settings,
-    celebrated:{...(older.settings?.celebrated||{}),...(newer.settings?.celebrated||{})}};
+    celebrated:{...(older.settings?.celebrated||{}),...(newer.settings?.celebrated||{})},
+    categorii:[...new Set([...(older.settings?.categorii||[]),...(newer.settings?.categorii||[])])],
+    titulari:[...new Set([...(older.settings?.titulari||[]),...(newer.settings?.titulari||[])])]};
   // token/gist/notificări rămân cele locale ale acestui dispozitiv
   ["ghToken","gistId","syncOn","lastSyncAt","lastNotif","notifOn","notifAm","notifPm"].forEach(k=>{ if(S.settings[k]!==undefined) settings[k]=S.settings[k]; });
-  return {v:1,habits,entries,settings,deleted:del,meta:{updatedAt:Math.max(an,bn)}};
+  return {v:1,habits,entries,settings,subs,subsDeleted:sdel,deleted:del,meta:{updatedAt:Math.max(an,bn)}};
 }
 async function syncNow(manual){
   const st=S.settings;
@@ -922,7 +1028,9 @@ function notifTick(){
     if(hm>=tm && st.lastNotif[k]!==today){
       st.lastNotif[k]=today; save();
       const hs=activeHabits().filter(h=>schedDay(h,today)&&!okDay(h,today));
-      const body = hs.length? msg+" ("+hs.length+" rămase)" : "Totul bifat azi. Impecabil.";
+      let body = hs.length? msg+" ("+hs.length+" rămase)" : "Totul bifat azi. Impecabil.";
+      const urg=subsActive().filter(s=>{const st=subStatus(s);return st.k==="warn"||st.k==="late";});
+      if(urg.length) body += "\nAbonamente: "+urg.slice(0,3).map(s=>s.nume+" — "+subStatus(s).txt).join("; ");
       if(navigator.serviceWorker&&navigator.serviceWorker.ready){
         navigator.serviceWorker.ready.then(reg=>reg.showNotification("Atomic GVD",{body,icon:"icon-192.png",badge:"icon-192.png",tag:"agvd-"+k}));
       } else try{ new Notification("Atomic GVD",{body}); }catch(e){}
@@ -935,22 +1043,376 @@ setInterval(notifTick, 60*1000);
 function render(){
   if(scr==="azi") renderAzi();
   else if(scr==="rap") renderRap();
+  else if(scr==="abo") renderAbo();
   else if(scr==="obi") renderObi();
   else renderSet();
 }
+/* pornirea aplicației se face la finalul fișierului (după ce toate modulele sunt definite) */
+
+/* ================================================================
+   ABONAMENTE
+   ================================================================ */
+const REC_TXT = {zile:"zile", luni:"luni", ani:"ani"};
+function addPeriod(d, tip, n){
+  const x=fromIso(d);
+  if(tip==="zile") x.setDate(x.getDate()+n);
+  else if(tip==="luni"){ const zi=x.getDate(); x.setDate(1); x.setMonth(x.getMonth()+n); x.setDate(Math.min(zi, new Date(x.getFullYear(),x.getMonth()+1,0).getDate())); }
+  else if(tip==="ani"){ const zi=x.getDate(); x.setDate(1); x.setFullYear(x.getFullYear()+n); x.setDate(Math.min(zi, new Date(x.getFullYear(),x.getMonth()+1,0).getDate())); }
+  return iso(x);
+}
+/* perioada curentă (sau prima, dacă începe în viitor) */
+function subPeriod(s){
+  if(s.recTip==="unic") return {start:s.start, end:s.start};
+  const t=todayIso();
+  let a=s.start, b=addPeriod(a,s.recTip,s.recN), g=0;
+  if(a>t) return {start:a,end:b};
+  while(b<=t && g++<1200){ a=b; b=addPeriod(a,s.recTip,s.recN); }
+  return {start:a,end:b};
+}
+const zileRamase = s => Math.round((fromIso(subPeriod(s).end)-fromIso(todayIso()))/864e5);
+function subStatus(s){
+  if(!s.activ) return {k:"off", txt:"inactiv"};
+  const p=subPeriod(s), t=todayIso();
+  if(p.start>t) return {k:"soon", txt:"începe pe "+fmtShort(p.start)};
+  const z=zileRamase(s);
+  if(s.recTip==="unic") return {k:"ok", txt:"plată unică"};
+  if(z<0) return {k:"late", txt:"expirat de "+(-z)+" zile"};
+  if(z<=7) return {k:"warn", txt:(s.auto?"se reînnoiește":"expiră")+(z===0?" azi":z===1?" mâine":" în "+z+" zile")};
+  return {k:"ok", txt:(s.auto?"reînnoire":"expiră")+" în "+z+" zile"};
+}
+const fmtShort = d => { const x=fromIso(d); return x.getDate()+" "+LUNA[x.getMonth()].slice(0,3)+(x.getFullYear()!==new Date().getFullYear()?" "+x.getFullYear():""); };
+const curs = () => S.settings.curs||CURS_DEF;
+const subRON = s => s.moneda==="RON" ? s.pret : s.pret*curs();
+const subEUR = s => s.moneda==="EUR" ? s.pret : s.pret/curs();
+const fmtRON = v => (Math.round(v*100)/100).toLocaleString("ro-RO",{minimumFractionDigits:0,maximumFractionDigits:2})+" lei";
+const fmtEUR = v => (Math.round(v*100)/100).toLocaleString("ro-RO",{minimumFractionDigits:0,maximumFractionDigits:2})+" €";
+function periodMonths(s){
+  if(s.recTip==="zile") return s.recN/30.4375;
+  if(s.recTip==="luni") return s.recN;
+  if(s.recTip==="ani")  return s.recN*12;
+  return 0;
+}
+const lunarRON = s => periodMonths(s)>0 ? subRON(s)/periodMonths(s) : 0;
+const anualRON = s => lunarRON(s)*12;
+/* datele de plată dintr-un interval */
+function platiIntre(s, from, to){
+  const out=[];
+  if(s.recTip==="unic"){ if(s.start>=from && s.start<=to) out.push(s.start); return out; }
+  let d=s.start, g=0;
+  while(d<=to && g++<3000){ if(d>=from) out.push(d); d=addPeriod(d,s.recTip,s.recN); }
+  return out;
+}
+const subsActive = () => (S.subs||[]).filter(s=>s.activ!==false);
+function recTxt(s){
+  if(s.recTip==="unic") return "plată unică";
+  if(s.recTip==="ani"  && s.recN===1) return "anual";
+  if(s.recTip==="luni" && s.recN===1) return "lunar";
+  if(s.recTip==="zile") return "la "+s.recN+" zile";
+  return "la "+s.recN+" "+REC_TXT[s.recTip];
+}
+
+/* --- alertă pe ecranul Azi --- */
+function renderAboAlert(isToday){
+  const box=$("#aboalert"); if(!box) return;
+  if(!isToday){ box.innerHTML=""; return; }
+  const urg=subsActive().filter(s=>{ const st=subStatus(s); return st.k==="warn"||st.k==="late"; });
+  if(!urg.length){ box.innerHTML=""; return; }
+  box.innerHTML=`<div class="aboalert">
+    <div class="t">${urg.length===1?"Un abonament are termen apropiat":urg.length+" abonamente au termen apropiat"}</div>
+    ${urg.slice(0,3).map(s=>`<div class="r"><span>${esc(s.nume)}</span><b>${subStatus(s).txt}</b></div>`).join("")}
+    <button id="aboGo">Vezi abonamentele</button></div>`;
+  $("#aboGo").addEventListener("click",()=>goTab("abo"));
+}
+function goTab(name){
+  const b=document.querySelector(`nav#tabs button[data-s="${name}"]`);
+  if(b) b.click();
+}
+
+/* --- ecran abonamente --- */
+let aboMode="lista", aboFiltCat="", aboFiltTit="", aboAnchor=todayIso(), aboRapMod="luna";
+function renderAbo(){
+  const body=$("#abobody"); if(!body) return;
+  $$("#aboseg button").forEach(x=>x.classList.toggle("on",x.dataset.m===aboMode));
+  body.innerHTML="";
+
+  // filtre
+  const cats=[...new Set([...(S.settings.categorii||[]),...subsActive().map(s=>s.categorie)])].filter(Boolean);
+  const tits=[...new Set([...(S.settings.titulari||[]),...subsActive().map(s=>s.titular)])].filter(Boolean);
+  const filt=document.createElement("div"); filt.className="filters";
+  filt.innerHTML=`
+    <select id="fCat"><option value="">Toate categoriile</option>${cats.map(c=>`<option ${c===aboFiltCat?"selected":""}>${esc(c)}</option>`).join("")}</select>
+    <select id="fTit"><option value="">Toți titularii</option>${tits.map(c=>`<option ${c===aboFiltTit?"selected":""}>${esc(c)}</option>`).join("")}</select>`;
+  body.appendChild(filt);
+  filt.querySelector("#fCat").addEventListener("change",e=>{ aboFiltCat=e.target.value; renderAbo(); });
+  filt.querySelector("#fTit").addEventListener("change",e=>{ aboFiltTit=e.target.value; renderAbo(); });
+
+  if(aboMode==="lista") renderAboLista(body);
+  else renderAboRap(body);
+}
+const aboFiltrate = () => subsActive().filter(s=>(!aboFiltCat||s.categorie===aboFiltCat)&&(!aboFiltTit||s.titular===aboFiltTit));
+
+function renderAboLista(body){
+  const list=aboFiltrate().slice().sort((a,b)=>{
+    const za=zileRamase(a), zb=zileRamase(b);
+    return (za<0?1e6+za:za)-(zb<0?1e6+zb:zb);
+  });
+  // sumar
+  const totL=list.reduce((a,s)=>a+lunarRON(s),0);
+  const sum=document.createElement("div"); sum.className="kpis";
+  sum.innerHTML=`<div class="kpi"><div class="v num" style="color:var(--accent)">${fmtRON(totL)}</div><div class="l">pe lună, în medie (${fmtEUR(totL/curs())})</div></div>
+    <div class="kpi"><div class="v num">${fmtRON(totL*12)}</div><div class="l">pe an · ${list.length} abonamente</div></div>`;
+  body.appendChild(sum);
+
+  if(!list.length){ const e=document.createElement("div"); e.className="empty"; e.textContent="Niciun abonament pentru filtrele alese."; body.appendChild(e); }
+
+  list.forEach(s=>{
+    const st=subStatus(s), p=subPeriod(s);
+    const c=document.createElement("div"); c.className="scard "+st.k;
+    let ses="";
+    if(s.sesiuniTotal>0){
+      const done=(s.sesiuni||[]).length;
+      ses=`<div class="sess"><div class="sl">ședințe folosite: <b class="num">${done}/${s.sesiuniTotal}</b></div>
+        <div class="sdots">${Array.from({length:s.sesiuniTotal},(_,i)=>`<button data-i="${i}" class="${i<done?"on":""}" aria-label="Ședința ${i+1}">${i+1}</button>`).join("")}</div>
+        ${done?`<div class="sdates">${(s.sesiuni||[]).map(d=>fmtShort(d)).join(" · ")}</div>`:""}</div>`;
+    }
+    c.innerHTML=`
+      <div class="shead">
+        <div><div class="sname">${esc(s.nume)}</div>
+          <div class="stags"><span class="tag">${esc(s.categorie||"—")}</span><span class="tag t2">${esc(s.titular||"—")}</span>${s.auto?`<span class="tag t3">reînnoire automată</span>`:""}</div>
+        </div>
+        <button class="sedit" aria-label="Modifică ${esc(s.nume)}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+      </div>
+      <div class="sprice"><b class="num">${fmtRON(subRON(s))}</b><span class="num">${fmtEUR(subEUR(s))}</span><span class="sep">·</span><span>${recTxt(s)}</span></div>
+      <div class="srow"><span class="stat ${st.k}">${st.txt}</span><span class="num">${s.recTip!=="unic"?"≈ "+fmtRON(lunarRON(s))+"/lună":""}</span></div>
+      <div class="sfoot"><span>${s.recTip==="unic"?"plătit pe "+fmtShort(s.start):"perioada curentă: "+fmtShort(p.start)+" → "+fmtShort(p.end)}</span></div>
+      ${s.obs?`<div class="sobs">${esc(s.obs)}</div>`:""}
+      ${ses}`;
+    c.querySelector(".sedit").addEventListener("click",()=>openSubForm(s));
+    c.querySelectorAll(".sdots button").forEach(b=>b.addEventListener("click",()=>{
+      const i=+b.dataset.i, arr=[...(s.sesiuni||[])];
+      if(i<arr.length) arr.length=i;            // apeși pe una bifată → o retragi (și pe cele de după)
+      else { for(let k=arr.length;k<=i;k++) arr.push(todayIso()); }
+      s.sesiuni=arr; save(); renderAbo();
+      if(arr.length===s.sesiuniTotal){ if(navigator.vibrate) navigator.vibrate([30,50,30]); toast(`Toate cele ${s.sesiuniTotal} ședințe folosite la <b>${esc(s.nume)}</b>.`); }
+      else if(i>=(s.sesiuni||[]).length-1) toast(`Ședința ${arr.length} din ${s.sesiuniTotal} — bifat.`);
+    }));
+    body.appendChild(c);
+  });
+
+  const add=document.createElement("button"); add.className="addbtn"; add.textContent="+ Abonament nou";
+  add.addEventListener("click",()=>openSubForm(null));
+  body.appendChild(add);
+
+  const inact=(S.subs||[]).filter(s=>s.activ===false);
+  if(inact.length){
+    const h=document.createElement("div"); h.className="arch-h"; h.textContent="Inactive"; body.appendChild(h);
+    inact.forEach(s=>{
+      const c=document.createElement("div"); c.className="scard off"; c.style.opacity=".6";
+      c.innerHTML=`<div class="shead"><div><div class="sname">${esc(s.nume)}</div><div class="stags"><span class="tag">${esc(s.categorie||"—")}</span></div></div>
+        <button class="sedit">⋯</button></div>`;
+      c.querySelector(".sedit").addEventListener("click",()=>openSubForm(s));
+      body.appendChild(c);
+    });
+  }
+}
+
+/* --- rapoarte abonamente: lunar / anual --- */
+function renderAboRap(body){
+  const seg=document.createElement("div"); seg.className="seg";
+  seg.innerHTML=`<button data-p="luna" class="${aboRapMod==="luna"?"on":""}">Lună</button><button data-p="an" class="${aboRapMod==="an"?"on":""}">An</button>`;
+  body.appendChild(seg);
+  seg.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ aboRapMod=b.dataset.p; renderAbo(); }));
+
+  const d=fromIso(aboAnchor);
+  let from,to,titlu;
+  if(aboRapMod==="luna"){
+    from=iso(new Date(d.getFullYear(),d.getMonth(),1));
+    to=iso(new Date(d.getFullYear(),d.getMonth()+1,0));
+    titlu=LUNA[d.getMonth()][0].toUpperCase()+LUNA[d.getMonth()].slice(1)+" "+d.getFullYear();
+  } else {
+    from=iso(new Date(d.getFullYear(),0,1)); to=iso(new Date(d.getFullYear(),11,31));
+    titlu="Anul "+d.getFullYear();
+  }
+  const nav=document.createElement("div"); nav.className="periodnav";
+  nav.innerHTML=`<h2>${titlu}</h2><div class="navbtns"><button id="aPrev">‹</button><button id="aNext">›</button></div>`;
+  body.appendChild(nav);
+  nav.querySelector("#aPrev").addEventListener("click",()=>{ const x=fromIso(aboAnchor); if(aboRapMod==="luna"){x.setDate(1);x.setMonth(x.getMonth()-1);} else x.setFullYear(x.getFullYear()-1); aboAnchor=iso(x); renderAbo(); });
+  nav.querySelector("#aNext").addEventListener("click",()=>{ const x=fromIso(aboAnchor); if(aboRapMod==="luna"){x.setDate(1);x.setMonth(x.getMonth()+1);} else x.setFullYear(x.getFullYear()+1); aboAnchor=iso(x); renderAbo(); });
+
+  const list=aboFiltrate();
+  // cheltuiala efectivă din perioadă
+  let efectiv=0; const plati=[];
+  list.forEach(s=> platiIntre(s,from,to).forEach(dt=>{ efectiv+=subRON(s); plati.push({d:dt,s}); }));
+  plati.sort((a,b)=>a.d<b.d?-1:1);
+  // cost normalizat
+  const norm=list.reduce((a,s)=>a+lunarRON(s),0)*(aboRapMod==="luna"?1:12);
+
+  const kp=document.createElement("div"); kp.className="kpis";
+  kp.innerHTML=`
+    <div class="kpi"><div class="v num" style="color:var(--accent)">${fmtRON(norm)}</div><div class="l">cost normalizat ${aboRapMod==="luna"?"pe lună":"pe an"}<br>${fmtEUR(norm/curs())}</div></div>
+    <div class="kpi"><div class="v num">${fmtRON(efectiv)}</div><div class="l">plăți efective în perioadă<br>${fmtEUR(efectiv/curs())} · ${plati.length} plăți</div></div>`;
+  body.appendChild(kp);
+
+  // pe categorii (normalizat)
+  const peCat={}; list.forEach(s=>{ peCat[s.categorie||"—"]=(peCat[s.categorie||"—"]||0)+lunarRON(s)*(aboRapMod==="luna"?1:12); });
+  const catArr=Object.entries(peCat).sort((a,b)=>b[1]-a[1]);
+  const maxC=Math.max(1,...catArr.map(x=>x[1]));
+  const cc=document.createElement("div"); cc.className="card";
+  cc.innerHTML=`<h3>Pe categorii</h3><div class="sub">cost normalizat ${aboRapMod==="luna"?"lunar":"anual"}</div>`+
+    catArr.map(([k,v])=>`<div class="brow"><div class="bl">${esc(k)}</div><div class="bt"><i style="width:${Math.round(v/maxC*100)}%"></i></div><div class="bv num">${fmtRON(v)}</div></div>`).join("");
+  body.appendChild(cc);
+
+  // pe titulari
+  const peTit={}; list.forEach(s=>{ peTit[s.titular||"—"]=(peTit[s.titular||"—"]||0)+lunarRON(s)*(aboRapMod==="luna"?1:12); });
+  const titArr=Object.entries(peTit).sort((a,b)=>b[1]-a[1]);
+  const maxT=Math.max(1,...titArr.map(x=>x[1]));
+  const tc=document.createElement("div"); tc.className="card";
+  tc.innerHTML=`<h3>Pe titulari</h3><div class="sub">cine suportă costul</div>`+
+    titArr.map(([k,v])=>`<div class="brow"><div class="bl">${esc(k)}</div><div class="bt"><i style="width:${Math.round(v/maxT*100)}%"></i></div><div class="bv num">${fmtRON(v)}</div></div>`).join("");
+  body.appendChild(tc);
+
+  if(aboRapMod==="an"){
+    // plăți pe luni
+    const luni=Array(12).fill(0);
+    list.forEach(s=>platiIntre(s,from,to).forEach(dt=>{ luni[fromIso(dt).getMonth()]+=subRON(s); }));
+    const maxL=Math.max(1,...luni);
+    const lc=document.createElement("div"); lc.className="card";
+    lc.innerHTML=`<h3>Plăți pe luni</h3><div class="sub">cash-flow real: ce iese din cont în fiecare lună</div>`;
+    const wrap=document.createElement("div"); wrap.className="dow"; wrap.style.height="110px";
+    luni.forEach((v,i)=>{ wrap.innerHTML+=`<div class="b"><span class="pv num">${v?Math.round(v):""}</span><span class="bar" style="height:${v?Math.max(3,v/maxL*72):2}px"></span><span class="lb">${LUNA[i].slice(0,3)}</span></div>`; });
+    lc.appendChild(wrap);
+    const vf=luni.reduce((a,b)=>a+b,0), maxIdx=luni.indexOf(maxL);
+    if(vf>0){ const co=document.createElement("div"); co.className="callout";
+      co.innerHTML=`Luna cea mai încărcată e <b>${LUNA[maxIdx]}</b> (${fmtRON(maxL)}). Total plăți în an: <b>${fmtRON(vf)}</b> (${fmtEUR(vf/curs())}).`;
+      lc.appendChild(co); }
+    body.appendChild(lc);
+  } else {
+    // calendarul plăților lunii
+    const pc=document.createElement("div"); pc.className="card";
+    pc.innerHTML=`<h3>Plăți în această lună</h3><div class="sub">${plati.length?"în ordinea scadenței":"nicio plată în luna aceasta"}</div>`+
+      plati.map(p=>`<div class="prow"><span class="pd num">${fmtShort(p.d)}</span><span class="pn">${esc(p.s.nume)}</span><span class="pv num">${fmtRON(subRON(p.s))}</span></div>`).join("");
+    body.appendChild(pc);
+  }
+
+  const nota=document.createElement("div"); nota.className="callout";
+  nota.innerHTML=`Conversii la cursul de <b class="num">${curs().toLocaleString("ro-RO",{minimumFractionDigits:2,maximumFractionDigits:4})} RON/EUR</b> (îl schimbi din Setări). Costul normalizat aduce toate abonamentele la echivalent ${aboRapMod==="luna"?"lunar":"anual"}; plățile efective arată cash-flow-ul real.`;
+  body.appendChild(nota);
+}
+
+/* --- formular abonament --- */
+function openSubForm(s){
+  const isNew=!s;
+  const f = s ? {...s, sesiuni:[...(s.sesiuni||[])]} : {id:"s"+Date.now(), nume:"", categorie:S.settings.categorii[0]||"", titular:S.settings.titulari[0]||"George",
+    moneda:"RON", pret:0, recTip:"luni", recN:1, start:todayIso(), auto:true, obs:"", sesiuniTotal:0, sesiuni:[], activ:true};
+  const cats=[...new Set([...(S.settings.categorii||[]), f.categorie].filter(Boolean))];
+  const tits=[...new Set([...(S.settings.titulari||[]), f.titular].filter(Boolean))];
+  const sheet=$("#modalSheet");
+  sheet.innerHTML=`
+    <h2>${isNew?"Abonament nou":"Modifică abonamentul"}</h2>
+    <div class="note">Prețul îl scrii într-o monedă; cealaltă se calculează automat la cursul din Setări (${curs().toLocaleString("ro-RO",{maximumFractionDigits:4})} RON/EUR).</div>
+    <div class="field"><label>Denumire</label><input id="b-nume" value="${esc(f.nume)}" placeholder="ex.: Abonament sală"></div>
+    <div class="field"><label>Preț</label>
+      <div class="row2">
+        <input id="b-pretRON" type="number" inputmode="decimal" step="0.01" placeholder="lei" value="${f.pret? (f.moneda==="RON"? f.pret : Math.round(f.pret*curs()*100)/100):""}">
+        <input id="b-pretEUR" type="number" inputmode="decimal" step="0.01" placeholder="euro" value="${f.pret? (f.moneda==="EUR"? f.pret : Math.round(f.pret/curs()*100)/100):""}">
+      </div>
+      <div class="hint">Moneda în care e stabilit efectiv abonamentul:
+        <span class="minitabs" id="b-mon"><button data-m="RON" class="${f.moneda==="RON"?"on":""}">RON</button><button data-m="EUR" class="${f.moneda==="EUR"?"on":""}">EUR</button></span></div>
+    </div>
+    <div class="field"><label>Recurență</label>
+      <div class="row2">
+        <select id="b-recTip">
+          <option value="zile" ${f.recTip==="zile"?"selected":""}>la X zile</option>
+          <option value="luni" ${f.recTip==="luni"?"selected":""}>la X luni</option>
+          <option value="ani"  ${f.recTip==="ani"?"selected":""}>la X ani</option>
+          <option value="unic" ${f.recTip==="unic"?"selected":""}>plată unică</option>
+        </select>
+        <input id="b-recN" type="number" inputmode="numeric" min="1" step="1" value="${f.recN||1}" ${f.recTip==="unic"?"disabled":""}>
+      </div>
+      <div class="hint" id="b-rechint"></div>
+    </div>
+    <div class="field"><label>Data de început</label><input id="b-start" type="date" value="${f.start}">
+      <div class="hint">De la ea se calculează termenul. Ex.: ITP la 2 ani cu start 20.09.2024 → următorul pe 20.09.2026.</div></div>
+    <div class="togglerow"><span>Reînnoire automată<div class="hint">Se reia singur (card înrolat). Dacă nu, apare ca „expiră”.</div></span>
+      <button class="tg ${f.auto?"on":""}" id="b-auto" role="switch" aria-checked="${f.auto}"><i></i></button></div>
+    <div class="field"><label>Categorie</label>
+      <select id="b-cat">${cats.map(c=>`<option ${c===f.categorie?"selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ categorie nouă…</option></select></div>
+    <div class="field"><label>Titular</label>
+      <select id="b-tit">${tits.map(c=>`<option ${c===f.titular?"selected":""}>${esc(c)}</option>`).join("")}<option value="__new">+ titular nou…</option></select></div>
+    <div class="field"><label>Ședințe / utilizări incluse</label>
+      <div class="freqrow"><button id="b-sm">−</button><span class="fv num" id="b-sv">${f.sesiuniTotal||0}</span><button id="b-sp">+</button></div>
+      <div class="hint">0 = fără evidență de ședințe. Dacă pui 4, le bifezi pe rând în listă (ex. abonamentul de înot).</div></div>
+    <div class="field"><label>Observații</label><textarea id="b-obs" rows="2" placeholder="ex.: Omniasig, ITP Brașov">${esc(f.obs||"")}</textarea></div>
+    <div class="togglerow"><span>Activ</span><button class="tg ${f.activ!==false?"on":""}" id="b-activ" role="switch"><i></i></button></div>
+    <div class="mact">
+      ${isNew?"":'<button class="btn-d" id="b-del">Șterge</button>'}
+      <button class="btn-s" id="b-cancel">Renunță</button>
+      <button class="btn-p" id="b-save">${isNew?"Adaugă":"Salvează"}</button>
+    </div>`;
+  $("#modal").classList.add("show");
+
+  const hint=()=>{ const t=$("#b-recTip").value, n=+$("#b-recN").value||1;
+    $("#b-rechint").textContent = t==="unic" ? "O singură plată, fără reînnoire." :
+      "Se reia " + (t==="zile"?`la fiecare ${n} zile`: t==="luni"?(n===1?"lunar":`la fiecare ${n} luni`):(n===1?"anual":`la fiecare ${n} ani`)) + ".";
+  };
+  hint();
+  $("#b-recTip").addEventListener("change",e=>{ $("#b-recN").disabled = e.target.value==="unic"; hint(); });
+  $("#b-recN").addEventListener("input",hint);
+  // conversie live între monede
+  const rON=$("#b-pretRON"), rEU=$("#b-pretEUR");
+  rON.addEventListener("input",()=>{ const v=parseFloat(rON.value); rEU.value = isNaN(v)?"":Math.round(v/curs()*100)/100; });
+  rEU.addEventListener("input",()=>{ const v=parseFloat(rEU.value); rON.value = isNaN(v)?"":Math.round(v*curs()*100)/100; });
+  $$("#b-mon button").forEach(b=>b.addEventListener("click",()=>{ f.moneda=b.dataset.m; $$("#b-mon button").forEach(x=>x.classList.toggle("on",x===b)); }));
+  $("#b-auto").addEventListener("click",e=>{ f.auto=!f.auto; e.currentTarget.classList.toggle("on",f.auto); });
+  $("#b-activ").addEventListener("click",e=>{ f.activ=!(f.activ!==false); e.currentTarget.classList.toggle("on",f.activ); });
+  $("#b-sm").addEventListener("click",()=>{ f.sesiuniTotal=Math.max(0,(f.sesiuniTotal||0)-1); $("#b-sv").textContent=f.sesiuniTotal; });
+  $("#b-sp").addEventListener("click",()=>{ f.sesiuniTotal=Math.min(60,(f.sesiuniTotal||0)+1); $("#b-sv").textContent=f.sesiuniTotal; });
+  const selNew=(sel,lista,key)=>{ $(sel).addEventListener("change",e=>{
+    if(e.target.value==="__new"){
+      const v=prompt(key==="categorii"?"Numele noii categorii:":"Numele noului titular:");
+      if(v&&v.trim()){ S.settings[key]=[...(S.settings[key]||[]),v.trim()]; save(false);
+        const o=document.createElement("option"); o.textContent=v.trim(); o.selected=true; e.target.insertBefore(o,e.target.lastElementChild);
+      } else e.target.value=lista[0]||"";
+    }}); };
+  selNew("#b-cat",cats,"categorii"); selNew("#b-tit",tits,"titulari");
+  $("#b-cancel").addEventListener("click",closeModal);
+  if(!isNew) $("#b-del").addEventListener("click",()=>{
+    confirmDlg(`Ștergi definitiv abonamentul „${esc(f.nume)}”? (Alternativ: dezactivează-l — rămâne în istoric.)`,()=>{
+      S.subsDeleted.push(f.id); S.subs=S.subs.filter(x=>x.id!==f.id);
+      save(); closeModal(); renderAbo(); toast("Abonament șters.");
+    });
+  });
+  $("#b-save").addEventListener("click",()=>{
+    f.nume=$("#b-nume").value.trim();
+    if(!f.nume){ $("#b-nume").focus(); return; }
+    const vRON=parseFloat(rON.value)||0, vEUR=parseFloat(rEU.value)||0;
+    f.pret = f.moneda==="RON" ? vRON : vEUR;
+    f.recTip=$("#b-recTip").value; f.recN=Math.max(1,parseInt($("#b-recN").value)||1);
+    f.start=$("#b-start").value||todayIso();
+    f.categorie=$("#b-cat").value==="__new"?f.categorie:$("#b-cat").value;
+    f.titular=$("#b-tit").value==="__new"?f.titular:$("#b-tit").value;
+    f.obs=$("#b-obs").value.trim();
+    if((f.sesiuni||[]).length>f.sesiuniTotal) f.sesiuni=f.sesiuni.slice(0,f.sesiuniTotal);
+    if(isNew) S.subs.push(f); else { const i=S.subs.findIndex(x=>x.id===f.id); S.subs[i]=f; }
+    save(); closeModal(); renderAbo();
+    toast(isNew?`„${esc(f.nume)}” adăugat.`:"Salvat.");
+  });
+}
+
+/* ================================================================
+   PORNIRE
+   ================================================================ */
 load();
 render();
 notifTick();
-
-/* la revenirea în aplicație, sari la ziua curentă dacă s-a schimbat data */
-document.addEventListener("visibilitychange",()=>{
-  if(!document.hidden){ if(viewDate!==todayIso() && scr==="azi"){} render(); notifTick(); syncNow(false); }
-});
 syncNow(false);
+
+/* la revenirea în aplicație: reîmprospătăm ziua, notificările și sincronizarea */
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden){ render(); notifTick(); syncNow(false); }
+});
 
 /* service worker */
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("sw.js").catch(()=>{});
-  });
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
 }

@@ -212,11 +212,68 @@ svg.chart{width:100%;height:auto;display:block;margin-top:10px}
 .onb b{color:var(--ink)}
 .onb button{margin-top:16px;background:var(--accent);color:#141312;font-weight:700;padding:11px 22px;border-radius:12px}
 
+/* ============ ABONAMENTE ============ */
+.vbar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;margin-top:9px;overflow:hidden;max-width:210px}
+.vbar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .5s cubic-bezier(.22,1,.36,1)}
+.listsep{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);margin:14px 0 2px;padding-left:2px}
+.aboalert{background:#231B12;border:1px solid #4A3720;border-radius:var(--r);padding:13px 15px;margin-top:14px}
+.aboalert .t{font-weight:700;font-size:14px;color:var(--accent)}
+.aboalert .r{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:var(--ink2);margin-top:6px}
+.aboalert .r b{color:var(--ink);font-weight:600;white-space:nowrap}
+.aboalert button{margin-top:10px;font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.03em}
+.filters{display:flex;gap:8px;margin-top:14px}
+.filters select{flex:1;font-size:13.5px;padding:9px 10px}
+.scard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-top:10px;border-left:3px solid var(--line)}
+.scard.warn{border-left-color:var(--accent)}
+.scard.late{border-left-color:var(--danger)}
+.scard.ok{border-left-color:#3E5C46}
+.scard.soon{border-left-color:#3E4C6B}
+.shead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.sname{font-weight:700;font-size:16px;line-height:1.25}
+.stags{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.tag{font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;background:var(--raised);color:var(--ink2);border:1px solid var(--line)}
+.tag.t2{color:#C6B79E}
+.tag.t3{color:var(--accent);border-color:var(--accent-deep)}
+.sedit{width:36px;height:36px;border-radius:10px;background:var(--raised);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink2);flex:none}
+.sprice{display:flex;align-items:baseline;gap:8px;margin-top:11px;flex-wrap:wrap}
+.sprice b{font-family:var(--font-d);font-size:21px;font-weight:600}
+.sprice span{font-size:13px;color:var(--ink2)}
+.sprice .sep{color:var(--ink3)}
+.srow{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:9px;font-size:12.5px;color:var(--ink2)}
+.stat{font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--raised);border:1px solid var(--line)}
+.stat.warn{color:var(--accent);border-color:var(--accent-deep)}
+.stat.late{color:var(--danger);border-color:#5A3128}
+.stat.ok{color:#8FB894;border-color:#31462F}
+.stat.soon{color:#96AACB;border-color:#2F3A4A}
+.sfoot{font-size:12px;color:var(--ink3);margin-top:8px}
+.sobs{font-size:12.5px;color:var(--ink2);margin-top:8px;padding:8px 10px;background:var(--raised);border-radius:9px;line-height:1.4}
+.sess{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+.sess .sl{font-size:12.5px;color:var(--ink2)}
+.sess .sl b{color:var(--ink)}
+.sdots{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.sdots button{width:38px;height:38px;border-radius:11px;background:var(--raised);border:1px solid var(--line);color:var(--ink3);font-weight:700;font-size:13px;transition:.2s}
+.sdots button.on{background:var(--accent);border-color:var(--accent);color:#141312}
+.sdates{font-size:11.5px;color:var(--ink3);margin-top:7px}
+.brow{display:flex;align-items:center;gap:10px;margin-top:10px}
+.brow .bl{font-size:13px;color:var(--ink2);width:98px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brow .bt{flex:1;height:8px;background:var(--raised);border-radius:99px;overflow:hidden}
+.brow .bt i{display:block;height:100%;background:var(--accent);opacity:.75;border-radius:99px}
+.brow .bv{font-size:12.5px;color:var(--ink);width:78px;text-align:right;flex:none}
+.prow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.prow:last-child{border-bottom:none}
+.prow .pd{color:var(--ink3);width:64px;flex:none;font-size:12.5px}
+.prow .pn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prow .pv{color:var(--ink);font-weight:600}
+.minitabs{display:inline-flex;gap:4px;margin-left:6px;vertical-align:middle}
+.minitabs button{font-size:12px;font-weight:700;padding:4px 11px;border-radius:99px;background:var(--raised);border:1px solid var(--line);color:var(--ink3)}
+.minitabs button.on{background:var(--accent);border-color:var(--accent);color:#141312}
+textarea{resize:vertical;line-height:1.45}
+
 /* ============ TAB BAR ============ */
 nav#tabs{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);border-top:1px solid var(--line);z-index:40;padding-bottom:env(safe-area-inset-bottom)}
 nav#tabs .in{max-width:480px;margin:0 auto;display:flex}
-nav#tabs button{flex:1;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink3);font-size:10.5px;font-weight:600;letter-spacing:.03em}
-nav#tabs button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav#tabs button{flex:1;padding:10px 0 12px;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--ink3);font-size:9.5px;font-weight:600;letter-spacing:.02em}
+nav#tabs button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 nav#tabs button.on{color:var(--accent)}
 .screen{display:none}
 .screen.on{display:block;animation:fade .25s}
@@ -242,8 +299,18 @@ nav#tabs button.on{color:var(--accent)}
   <main>
     <section class="screen on" id="scr-azi">
       <div id="onb"></div>
+      <div id="aboalert"></div>
       <div class="votebar" id="votebar"></div>
       <div class="hlist" id="hlist"></div>
+    </section>
+
+    <section class="screen" id="scr-abo">
+      <h2 style="font-size:22px;margin-top:16px">Abonamente</h2>
+      <div class="seg" id="aboseg">
+        <button data-m="lista" class="on">Listă</button>
+        <button data-m="rap">Rapoarte</button>
+      </div>
+      <div id="abobody"></div>
     </section>
 
     <section class="screen" id="scr-rap">
@@ -284,6 +351,7 @@ nav#tabs button.on{color:var(--accent)}
 <nav id="tabs"><div class="in">
   <button data-s="azi" class="on"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Azi</button>
   <button data-s="rap"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 6-6"/></svg>Rapoarte</button>
+  <button data-s="abo"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>Abonamente</button>
   <button data-s="obi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Obiceiuri</button>
   <button data-s="set"><svg viewBox="0 0 24 24"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>Setări</button>
 </div></nav>
